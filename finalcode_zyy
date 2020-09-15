@@ -1,0 +1,99 @@
+from bs4 import BeautifulSoup
+import requests
+import time
+import pandas as pd
+from selenium import webdriver
+import time
+
+headers = {
+    'Cookie':'JSESSIONID=0AC4A369BC49B17750CA0A2C17ED2654; dotmatics.elementalKey=SLsLWlMhrHnTjDerSrlG; ak_bmsc=9625DAEBB7CE6E1EAD59DEFB6D28072E1724F1071C3B000029EB5E5F166E8E2E~plsa8pMQnba8APErNzNHXHmcJBfc3Ump2NCxScQdrwAPyiKSopk9hpd8bH/A4NwQEXaojMMbTNa/5O8T/Pc23A8Kq9b47joHac813z1wA4tewopcctg1dvoQ7eSu9uX+58M2aIBmcCOcUawaKj80LhjipGH+uiccXWiCdDITIEtPotDT3sb7/VuFSxuu69D3KEHjQzc7gJFkpdnyPCWcT7ZKYGwPT3nggJ2a6t6KapygUq6u8dOd4Hb+APSgee/99S; bm_sz=D6D146ABC3B3B87D592E1288D5F93988~YAAQB/EkF+/ysW90AQAAp5jGigk74hRXYyWVoV/cRaLCYNEsBb6cz1EjJvssMYB81DbskAV1mcSiv5Cm4FVdzqHxwTC73IKf89l1oAEEEAKKkoIc2y1FhVar9go0Zc7JXo2EKu2LfDw3sDkwLM0mNDluyuEPKLELO84cvS9ro+ri53mShxa9jEfFXni4DCvoWg7CPGrGwHo=; _sp_id.630e=5f2fa36a-1e23-4132-a2dd-6ca909e44f9f.1600056109.1.1600056109.1600056109.ad43a3e0-ce1c-4a18-a555-fc4ad571a8d8; _sp_ses.630e=*; _hjTLDTest=1; _hjid=c7303386-dd41-47a5-ad7f-ad494252bea8; _hjAbsoluteSessionInProgress=0; RT="z=1&dm=webofknowledge.com&si=0b675907-8834-4bc5-a012-83776a27873f&ss=kf203bny&sl=1&tt=881&bcn=%2F%2F684fc53e.akstat.io%2F&ld=884&nu=5e4xogct&cl=9hk&ul=9hr"',
+    'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36',
+    'Host':'apps.webofknowledge.com'
+    }  
+    
+# 创建一个空数据框进行数据存储
+infos = pd.DataFrame(columns = ['title', 'publisher', 'published', 'authors', 'cited_num', 'times_cited', 'abstract', 'keywords', 'keyword_plus', 'authors_address', 'author_universtiy', 'cited'])  
+
+# 爬取参考文献
+def get_cited():
+    driver = webdriver.Chrome(r'd:\webdrivers\chromedriver.exe')
+    driver.get(url) 
+    item_Elem = driver.find_element_by_link_text('View All in Cited References page')
+    item_Elem.click()  # 点击跳转到新的参考文献页面
+    cited=[]
+    time.sleep(4)
+    totalpage = driver.find_element_by_id('pageCount.top')
+    totalpage = int(totalpage.text)  # 获取总页数
+    cite = driver.find_elements_by_class_name('reference-item-non-ar')
+    for i in cite:
+        cited.append(i.text)  # 获取第一页的文献列表文本
+    num = 1
+    while num <= (totalpage - 1):
+        element = driver.find_element_by_xpath("//*[@class='paginationNext snowplow-navigation-nextpage-top']")
+        element.click()
+        time.sleep(4)
+        cites = driver.find_elements_by_class_name('reference-item-non-ar')
+        for i in cites:
+            cited.append(i.text)  # 获取后续页面的文献列表文本
+        num += 1
+    driver.close()
+    return(cited)
+    
+    # 抓取单篇文章的标题等信息
+def get_infos(url):
+    global infos  # 设为全局变量，否则会报错
+    wb_data = requests.get(url, headers = headers)
+    time.sleep(4)
+    soup = BeautifulSoup(wb_data.text, 'lxml')
+    
+    title = soup.select('div.title > value')         
+    title = str(title).replace('[<value>', '')
+    title = title.replace('</value>]', '') 
+    
+    publisher = soup.find('span', class_ = 'hitHilite')   
+    
+    published = soup.select('p.FR_field > value')[4]
+    published = str(published).replace('<value>', '')
+    published = published.replace('</value>', '')
+    
+    authors = soup.find("p", class_ = "FR_field")    
+    authors = authors.get_text(strip = True).replace('By:', '')        
+    
+    cited_num = soup.find_all('span', class_ = "large-number")[1]
+    
+    times_cited = soup.find_all('span', class_ = "large-number")[0]
+
+    abstract = soup.select('div.block-record-info > div.title3 ~ .FR_field')[0]  
+    
+    keywords = soup.select('div.block-record-info > div.title3 ~ .FR_field')[1]
+    keywords = keywords.get_text(strip=True).replace('Author Keywords:', '')
+
+    keyword_plus = soup.select('div.block-record-info > div.title3 ~ .FR_field')[2]
+    keyword_plus = keyword_plus.get_text(strip=True).replace('KeyWords Plus:', '')
+    
+    address = soup.select('td.fr_address_row2 > a')
+    authors_address = []
+    for addr in address:
+        authors_address.append(addr.get_text().replace('\u200e ', ''))
+ 
+    university = soup.find_all('preferred_org')
+    author_universtiy = []
+    for univer in university:
+        author_universtiy.append(univer.get_text())
+        
+    cited = get_cited()
+
+    info = pd.DataFrame({"title": [title], "publisher":[publisher.get_text()], "published":[published], "authors": [authors], "cited_num":[cited_num.get_text()], "times_cited":[times_cited.get_text()],  "abstract": [abstract.get_text()], "keywords":[keywords], "keyword_plus":[keyword_plus], "authors_address":[authors_address], "author_universtiy":[author_universtiy], "cited":[cited]})
+    infos = infos.append(info, sort = False)  # 向infos数据框中添加行
+    return infos
+    
+# 待爬网址列表
+urls=['http://apps.webofknowledge.com/full_record.do?product=UA&search_mode=GeneralSearch&qid=6&SID=7FKGoPcXL52wIThtSKO&page=1&doc={}'.format(str(i)) for i in range(31, 36)]
+
+# 循环爬取数据
+for url in urls:
+    get_infos(url)
+infos  # 结果列表
+
+# 保存为csv文件
+infos.to_csv("ANNALS OF STATISTICS_31.csv", encoding='utf_8_sig', index = False) 
